@@ -12,12 +12,17 @@ package mygame;
  */
 import com.jme3.app.SimpleApplication;
 import com.jme3.audio.AudioNode;
+import com.jme3.audio.AudioSource;
 import com.jme3.bullet.BulletAppState;
+import com.jme3.bullet.PhysicsSpace;
+import com.jme3.bullet.PhysicsTickListener;
 import com.jme3.bullet.collision.PhysicsCollisionEvent;
 import com.jme3.bullet.collision.PhysicsCollisionListener;
+import com.jme3.bullet.collision.shapes.BoxCollisionShape;
 import com.jme3.bullet.collision.shapes.CapsuleCollisionShape;
 import com.jme3.bullet.collision.shapes.CollisionShape;
 import com.jme3.bullet.control.CharacterControl;
+import com.jme3.bullet.control.GhostControl;
 import com.jme3.bullet.control.RigidBodyControl;
 import com.jme3.bullet.util.CollisionShapeFactory;
 import com.jme3.effect.ParticleEmitter;
@@ -45,22 +50,24 @@ import com.jme3.scene.shape.Sphere;
 import com.jme3.ui.Picture;
 import com.jme3.util.SkyFactory;
 
-public class Main extends SimpleApplication implements PhysicsCollisionListener {
+public class Main extends SimpleApplication {
     
     private RigidBodyControl playerController = new RigidBodyControl();
     private RigidBodyControl blueSphereController, redSphereController, yellowSphereController,
-            cyanSphereController, healthSphereController, laserController;
+            cyanSphereController, healthSphereController;
+    protected RigidBodyControl laserController;
     private BulletAppState physicsState = new BulletAppState();
-    private CharacterControl character;
+    protected  CharacterControl character;
     private Material wallMaterial, floorMaterial, laserMaterial, blueEnemyMat, redEnemyMat,
             yellowEnemyMat, cyanEnemyMat, healthMaterial, healthBarMaterial;
     private Node environmentNode = new Node();
-    private Node charModel, laser;
+    private Node charModel;
     private boolean left = false, right = false, up = false, down = false, jump = false;
     private Vector3f walkDirection = new Vector3f(0,0,0); 
     private Vector3f camDir = new Vector3f();
     private Vector3f camLeft = new Vector3f();    
-    private Node blueSphereNode, redSphereNode, yellowSphereNode, cyanSphereNode, healthSphereNode;
+    protected Node laser = new Node(), blueSphereNode = new Node(), redSphereNode = new Node(), 
+            yellowSphereNode = new Node(), cyanSphereNode = new Node(), healthSphereNode = new Node();
     private Node explosionNode = new Node();
     private ParticleEmitter shockwave, flash, flame, smoketrail;
     private static final int COUNT_FACTOR = 1;
@@ -72,14 +79,20 @@ public class Main extends SimpleApplication implements PhysicsCollisionListener 
     private int redDestroyed = 0;
     private int yellowDestroyed = 0;
     private int cyanDestroyed = 0;
-    private int playerCollision = 0;
+    private int hitCount = 0;
     private int playerHealth = 100;
-    private BitmapText scoreHUD, highScoreHUD, blueHUD, redHUD, yellowHUD, cyanHUD, 
+    protected BitmapText scoreHUD, highScoreHUD, blueHUD, redHUD, yellowHUD, cyanHUD, 
             shotsFiredHUD, healthHUD, timeHUD;
     private RandomPhysics randomPhy = new RandomPhysics();
     private Box healthBarBox;
     private Geometry healthBar;
-    private boolean isPlaying;
+    private AudioNode explosionSound, heartBeatSound, laserSound, healthSound, punchSound;
+    private String endReason;
+    private boolean blueCollide = false, redCollide = false, yellowCollide = false,
+            cyanCollide = false, healthCollide=false;
+    private boolean playerBlueCollide = false, playerRedCollide = false, playerYellowCollide = false,
+            playerCyanCollide = false, playerHealthCollide = false;
+    
     
     public static void main(String[] args) {
         Main app = new Main();
@@ -109,6 +122,7 @@ public class Main extends SimpleApplication implements PhysicsCollisionListener 
         physicsState.setSpeed(4);
         
       //calls void methods to initialize all objects in the scene
+        initSounds();
         initMaterials();
         initGameGUI();
         initEnvironment();
@@ -128,7 +142,6 @@ public class Main extends SimpleApplication implements PhysicsCollisionListener 
         createSmokeTrail();
         explosionNode.scale(5f);
         
-        physicsState.getPhysicsSpace().addCollisionListener(this);
     }
 
     @Override
@@ -157,49 +170,11 @@ public class Main extends SimpleApplication implements PhysicsCollisionListener 
         listener.setLocation(cam.getLocation());
         listener.setRotation(cam.getRotation());
         
-      //checks the bounds of  the spheres and redraws them if they are out of the
-      //arena bounds.
-        if (blueSphereController.getPhysicsLocation().x > 1000
-                || blueSphereController.getPhysicsLocation().y > 1000
-                || blueSphereController.getPhysicsLocation().y < -10
-                || blueSphereController.getPhysicsLocation().z > 1000) {
-            
-            blueSphereNode.detachAllChildren();
-            initBlueEnemy();
+        if (playerHealth <= 0){
+            endGame();
         }
-        if (redSphereController.getPhysicsLocation().x > 1000
-                || redSphereController.getPhysicsLocation().y > 1000
-                || redSphereController.getPhysicsLocation().y < -10
-                || redSphereController.getPhysicsLocation().z > 1000) {
-            
-            redSphereNode.detachAllChildren();
-            initRedEnemy();
-        }
-        if (yellowSphereController.getPhysicsLocation().x > 1000
-                || yellowSphereController.getPhysicsLocation().y > 1000
-                || yellowSphereController.getPhysicsLocation().y < -10
-                || yellowSphereController.getPhysicsLocation().z > 1000) {
-            
-            yellowSphereNode.detachAllChildren();
-            initYellowEnemy();
-        }
-        if (cyanSphereController.getPhysicsLocation().x > 1000
-                || cyanSphereController.getPhysicsLocation().y > 1000
-                || cyanSphereController.getPhysicsLocation().y < -10
-                || cyanSphereController.getPhysicsLocation().z > 1000) {
-            
-            cyanSphereNode.detachAllChildren();
-            initCyanEnemy();
-        }
-        if (healthSphereController.getPhysicsLocation().x > 1000
-                || healthSphereController.getPhysicsLocation().y > 1000
-                || healthSphereController.getPhysicsLocation().y < -10
-                || healthSphereController.getPhysicsLocation().z > 1000) {
-            
-            healthSphereNode.detachAllChildren();
-            initHealthSphere();
-        }
-        
+        sphereOutofBoundsChecker();
+        collideChecker();
         
     } //end update loop.
     
@@ -377,10 +352,6 @@ public class Main extends SimpleApplication implements PhysicsCollisionListener 
                 - healthAnnouncerHUD.getLineHeight(), 0);
         guiNode.attachChild(healthHUD);
         
-
-        
-        
-        
     }
     
     
@@ -486,13 +457,17 @@ public class Main extends SimpleApplication implements PhysicsCollisionListener 
     
     private void initPlayer() {
         
-        CapsuleCollisionShape capsule = new CapsuleCollisionShape(5f, 90f);
+        CapsuleCollisionShape capsule = new CapsuleCollisionShape(10, 80f);
         character = new CharacterControl(capsule, 10f);
+        CharacterCollisionControl collisionControlTick = new CharacterCollisionControl(capsule);
         character.setJumpSpeed(50f);
         charModel = (Node) assetManager.loadModel("Models/Oto/Oto.mesh.xml");
         charModel.setName("Player");
         charModel.addControl(character);
+        charModel.addControl(collisionControlTick);
         physicsState.getPhysicsSpace().add(character);
+        physicsState.getPhysicsSpace().add(collisionControlTick);
+        physicsState.getPhysicsSpace().addTickListener(collisionControlTick);
         //charModel.setLocalTranslation(0, 20, 0);
         character.setPhysicsLocation(new Vector3f (0,50,0));
         rootNode.attachChild(charModel);
@@ -507,12 +482,11 @@ public class Main extends SimpleApplication implements PhysicsCollisionListener 
         Geometry blueSphereGeom = new Geometry("Blue Enemy", blueSphere);
         blueSphereGeom.setMaterial(blueEnemyMat);
         
-      //initates the Node and physics  
-        blueSphereNode = new Node();        
         blueSphereController = new RigidBodyControl (10);
         blueSphereNode.setName("Blue");
         blueSphereNode.attachChild(blueSphereGeom);
         blueSphereNode.addControl(blueSphereController);
+        
         blueSphereController.setPhysicsLocation(randomPhy.getRandomYPosVector3f(450, 20, 450));
         blueSphereController.setLinearVelocity(randomPhy.getRandomVector3f(100, 0, 100));
         
@@ -531,12 +505,11 @@ public class Main extends SimpleApplication implements PhysicsCollisionListener 
         Geometry redSphereGeom = new Geometry("Red Enemy", redSphere);
         redSphereGeom.setMaterial(redEnemyMat);
         
-      //initates the Node and physics  
-        redSphereNode = new Node();
         redSphereController = new RigidBodyControl (10);
         redSphereNode.setName("Red");
         redSphereNode.attachChild(redSphereGeom);
-        redSphereNode.addControl(redSphereController);    
+        redSphereNode.addControl(redSphereController); 
+        
         redSphereController.setPhysicsLocation(randomPhy.getRandomYPosVector3f(450, 20, 450));
         redSphereController.setLinearVelocity(randomPhy.getRandomVector3f(100, 0, 100));
         
@@ -555,12 +528,11 @@ public class Main extends SimpleApplication implements PhysicsCollisionListener 
         Geometry yellowSphereGeom = new Geometry("Yellow Enemy", yellowSphere);
         yellowSphereGeom.setMaterial(yellowEnemyMat);
         
-      //initates the Node and physics  
-        yellowSphereNode = new Node();
         yellowSphereController = new RigidBodyControl (10);
         yellowSphereNode.setName("Yellow");
         yellowSphereNode.attachChild(yellowSphereGeom);
         yellowSphereNode.addControl(yellowSphereController);
+        
         yellowSphereController.setPhysicsLocation(randomPhy.getRandomYPosVector3f(450, 20, 450));
         yellowSphereController.setLinearVelocity(randomPhy.getRandomVector3f(100, 0, 100));
         
@@ -579,12 +551,11 @@ public class Main extends SimpleApplication implements PhysicsCollisionListener 
         Geometry cyanSphereGeom = new Geometry("Cyan Enemy", cyanSphere);
         cyanSphereGeom.setMaterial(cyanEnemyMat);
         
-      //initates the Node and physics  
-        cyanSphereNode = new Node();
         cyanSphereController = new RigidBodyControl (10);
         cyanSphereNode.setName("Cyan");
         cyanSphereNode.attachChild(cyanSphereGeom);
         cyanSphereNode.addControl(cyanSphereController);
+        
         cyanSphereController.setPhysicsLocation(randomPhy.getRandomYPosVector3f(450, 20, 450));
         cyanSphereController.setLinearVelocity(randomPhy.getRandomVector3f(100, 0, 100));
         
@@ -603,12 +574,11 @@ public class Main extends SimpleApplication implements PhysicsCollisionListener 
         Geometry healthSphereGeom = new Geometry("Health Sphere", healthSphere);
         healthSphereGeom.setMaterial(healthMaterial);
         
-      //initates the Node and physics  
-        healthSphereNode = new Node();
         healthSphereController = new RigidBodyControl (10);
         healthSphereNode.setName("Health");
         healthSphereNode.attachChild(healthSphereGeom);
         healthSphereNode.addControl(healthSphereController);
+          
         healthSphereController.setPhysicsLocation(randomPhy.getRandomYPosVector3f(450, 20, 450));
         healthSphereController.setLinearVelocity(randomPhy.getRandomVector3f(100, 0, 100));
         
@@ -621,11 +591,6 @@ public class Main extends SimpleApplication implements PhysicsCollisionListener 
     } //end initHealthSphere  
     
     private void shoot() {
-      
-      //initializes sound  
-        AudioNode laserSound = new AudioNode(assetManager, "Sounds/laser1.wav");
-        laserSound.setVolume(.5f);
-
         
       //initializes laser geometry  
         Sphere laserMesh = new Sphere(3,3,3);
@@ -633,23 +598,25 @@ public class Main extends SimpleApplication implements PhysicsCollisionListener 
         laserGeom.setMaterial(laserMaterial);
         laserGeom.setQueueBucket(RenderQueue.Bucket.Transparent);
         
-      //sets the laser name for physics collision and attaches to the scene
-        laser = new Node();
+        CollisionShape laserShape = new BoxCollisionShape(new Vector3f(5f,5f,5f));
         laser.setName("Laser");
         laser.attachChild(laserGeom);
-        rootNode.attachChild(laser);
         
-      //initalizes controller for laser  
-        laserController = new RigidBodyControl (10.0f);
+      //initalizes controllers for laser  
+        ProjectileCollisionControl laserControllerTick = new ProjectileCollisionControl(laserShape);
+        laserController = new RigidBodyControl(10f);
         laser.addControl(laserController);
+        laser.addControl(laserControllerTick);
         physicsState.getPhysicsSpace().add(laserController);
+        physicsState.getPhysicsSpace().add(laserControllerTick);
+        physicsState.getPhysicsSpace().addTickListener(laserControllerTick);
             
       //sets the shot direction to the direction of the player.  
-        laserController.setPhysicsLocation(new Vector3f(cam.getLocation().x, cam.getLocation().y - 2, cam.getLocation().z +10));
-        laserController.setLinearVelocity(cam.getDirection().mult(1200f));
-        
+        laserController.setPhysicsLocation(new Vector3f(cam.getLocation().x, cam.getLocation().y - 2, cam.getLocation().z +15));
+        laserController.setLinearVelocity(new Vector3f(cam.getDirection().x, cam.getDirection().y, cam.getDirection().z).mult(1200));
       //plays the shooting sound  
         laserSound.playInstance();
+        rootNode.attachChild(laser);
         
       //keeps score
         shotsFired++;
@@ -661,309 +628,6 @@ public class Main extends SimpleApplication implements PhysicsCollisionListener 
     public void simpleRender(RenderManager rm) {
        
     } //end simpleRender
-
-    public void collision(PhysicsCollisionEvent event) {
-        
-       //In each nested if statement event.getLifeTime() > 0 is checked.
-       //There seems to be a bug where sometimes the listener would call the event
-       //multiple times leading to scoring errors, but on the 2nd/3rd/4th time 
-       //the event life time was equal to 0. This makes sure that only the 
-       //1st event, with a lifetime of 1 actually fires an action.
-        
-        
-      //If the Blue sphere is hit, perform these actions  
-        if ("Blue".equals(event.getNodeB().getName()) || "Blue".equals(event.getNodeA().getName()) && event.getLifeTime() > 0) {
-            if ("Laser".equals(event.getNodeB().getName()) || "Laser".equals(event.getNodeA().getName()) && (event.getLifeTime() > 0)) {
-                
-              //instantiates audio  
-                AudioNode explosionSound = new AudioNode(assetManager, "Sounds/boom.wav");
-                explosionSound.setPositional(false);
-                explosionSound.setVolume(.4f);
-                explosionNode.attachChild(explosionSound);
-                explosionNode.setLocalTranslation(blueSphereNode.getLocalTranslation());
-                rootNode.attachChild(explosionNode);
-                
-              //detaches the sphere, laser from the node.
-                blueSphereNode.detachAllChildren();
-                blueSphereController.setEnabled(false);
-                laser.detachAllChildren();                
-                laserController.setEnabled(false);
-                
-              //plays shockwave and sound  
-                shockwave.emitAllParticles();
-                flash.emitAllParticles();
-                flame.emitAllParticles();
-                smoketrail.emitAllParticles();
-                explosionSound.playInstance();
-                
-              //keeps score  
-                score = score + 20;
-                scoreHUD.setText(Integer.toString(score));
-                blueDestroyed++;
-                blueHUD.setText(Integer.toString(blueDestroyed));
-                
-              //spawns a new sphere
-                initBlueEnemy();
-                
-            }
-        } //end blue collision detection
-        
-      //If the Red sphere is hit, perform these actions  
-        if ("Red".equals(event.getNodeB().getName()) || "Red".equals(event.getNodeA().getName()) && event.getLifeTime() > 0) {
-            if ("Laser".equals(event.getNodeB().getName()) || "Laser".equals(event.getNodeA().getName()) && (event.getLifeTime() > 0)) {
-                
-              //instantiates the audio  
-                AudioNode explosionSound = new AudioNode(assetManager, "Sounds/boom.wav");
-                explosionSound.setPositional(false);
-                explosionSound.setVolume(.4f);
-                explosionNode.attachChild(explosionSound);
-                explosionNode.setLocalTranslation(redSphereNode.getLocalTranslation());
-                rootNode.attachChild(explosionNode);
-                
-              //removes the sphere and laser and deactivates the controls  
-                redSphereNode.detachAllChildren();
-                redSphereController.setEnabled(false);
-                laser.detachAllChildren();
-                laserController.setEnabled(false);
-
-                
-              //plays shockwave and sound  
-                shockwave.emitAllParticles();
-                flash.emitAllParticles();
-                flame.emitAllParticles();
-                smoketrail.emitAllParticles();
-                explosionSound.playInstance();
-                
-              //keeps score  
-                score = score + 15;
-                scoreHUD.setText(Integer.toString(score));
-                redDestroyed++;
-                redHUD.setText(Integer.toString(redDestroyed));
-                
-              //spawns new sphere
-                initRedEnemy();
-                
-            }
-        }//end red collision detection
-        
-      //If the Yellow sphere is hit, perform these actions  
-        if ("Yellow".equals(event.getNodeB().getName()) || "Yellow".equals(event.getNodeA().getName())) {
-            if ("Laser".equals(event.getNodeB().getName()) || "Laser".equals(event.getNodeA().getName()) && (event.getLifeTime() > 0)) {
-                
-              //instantiates audio  
-                AudioNode explosionSound = new AudioNode(assetManager, "Sounds/boom.wav");
-                explosionSound.setPositional(false);
-                explosionSound.setVolume(.4f);
-                explosionNode.attachChild(explosionSound);
-                explosionNode.setLocalTranslation(yellowSphereNode.getLocalTranslation());
-                rootNode.attachChild(explosionNode);
-                
-              //removes the sphere, laser and deactivates the controls 
-                yellowSphereNode.detachAllChildren();
-                yellowSphereController.setEnabled(false); 
-                laser.detachAllChildren();                
-                laserController.setEnabled(false);
-                
-              //plays shockwave and sound  
-                shockwave.emitAllParticles();
-                flash.emitAllParticles();
-                flame.emitAllParticles();
-                smoketrail.emitAllParticles();
-                explosionSound.playInstance();
-                
-              //keeps score  
-                score = score + 10;
-                scoreHUD.setText(Integer.toString(score));
-                yellowDestroyed++;
-                yellowHUD.setText(Integer.toString(yellowDestroyed));                
-                
-              //spawns new sphere
-                initYellowEnemy();
-            }
-        }//end yellow collision detection
-        
-     //If the Cyan sphere is hit, perform these actions  
-        if ("Cyan".equals(event.getNodeB().getName()) || "Cyan".equals(event.getNodeA().getName())) {
-            if ("Laser".equals(event.getNodeB().getName()) || "Laser".equals(event.getNodeA().getName()) && (event.getLifeTime() > 0)) {
-                
-              //instantiates audio  
-                AudioNode explosionSound = new AudioNode(assetManager, "Sounds/boom.wav");
-                explosionSound.setPositional(false);
-                explosionSound.setVolume(.4f);
-                explosionNode.attachChild(explosionSound);
-                explosionNode.setLocalTranslation(cyanSphereNode.getLocalTranslation());
-                rootNode.attachChild(explosionNode);
-                
-              //removes the sphere, laser and deactivates the controls
-                cyanSphereNode.detachAllChildren();
-                cyanSphereController.setEnabled(false);
-                laser.detachAllChildren();                
-                laserController.setEnabled(false);                
-                
-              //plays shockwave and sound  
-                shockwave.emitAllParticles();
-                flash.emitAllParticles();
-                flame.emitAllParticles();
-                smoketrail.emitAllParticles();
-                explosionSound.playInstance();
-                
-              //keeps score  
-                score = score + 5;
-                scoreHUD.setText(Integer.toString(score));
-                cyanDestroyed++;
-                cyanHUD.setText(Integer.toString(cyanDestroyed));                
-                
-              //spawns new sphere
-                initCyanEnemy();
-            }
-        }//end cyan collision detection
-        
-      //If the health sphere is hit, perform these actions  
-        if ("Health".equals(event.getNodeB().getName()) || "Health".equals(event.getNodeA().getName())) {
-            if ("Laser".equals(event.getNodeB().getName()) || "Laser".equals(event.getNodeA().getName()) && (event.getLifeTime() > 0)) {
-                
-              //instantiates audio  
-                AudioNode explosionSound = new AudioNode(assetManager, "Sounds/boom.wav");
-                explosionSound.setPositional(false);
-                explosionSound.setVolume(.2f);
-                explosionNode.attachChild(explosionSound);
-                explosionNode.setLocalTranslation(healthSphereNode.getLocalTranslation());
-                rootNode.attachChild(explosionNode);
-                
-                AudioNode punchSound = new AudioNode(assetManager, "Sounds/punch.wav");
-                punchSound.setPositional(false);
-                rootNode.attachChild(punchSound);
-                punchSound.playInstance();
-                
-                
-              //removes the sphere, laser and deactivates the controls
-                healthSphereNode.detachAllChildren();
-                healthSphereController.setEnabled(false);
-                laser.detachAllChildren();                
-                laserController.setEnabled(false);                
-                
-              //plays shockwave and sound  
-                shockwave.emitAllParticles();
-                flash.emitAllParticles();
-                flame.emitAllParticles();
-                smoketrail.emitAllParticles();
-                explosionSound.playInstance();
-                
-              //keeps score  
-                score = score - 5;
-                scoreHUD.setText(Integer.toString(score));             
-                
-              //spawns new sphere
-                initHealthSphere();
-            }
-        }//end health sphere collision detection
-        
-     //If the player collides with a sphere, the player loses health  
-        if ("Player".equals(event.getNodeB().getName()) || "Player".equals(event.getNodeA().getName())) {
-            if ("Health".equals(event.getNodeB().getName()) || "Health".equals(event.getNodeA().getName()) && (event.getLifeTime() == 1)) {
-                
-                System.out.println ("Player got health");
-                healthSphereNode.detachAllChildren();
-                healthSphereController.setEnabled(false);
-                
-              //player's health cannot be over 100.  
-                if (playerHealth < 100){
-                    if (playerHealth <= 90){
-                        playerHealth = playerHealth+10;
-                    }
-                    else if (playerHealth > 90){
-                        int tempHealth = 100 - playerHealth;
-                        playerHealth = playerHealth + tempHealth;
-                    }
-                }
-              //updates the health bar GUI  
-                updateHealthBar();
-                AudioNode healthSound = new AudioNode(assetManager, "Sounds/healthpickup.wav");
-                healthSound.setPositional(false);
-                rootNode.attachChild(healthSound);
-                healthSound.playInstance();
-                
-                initHealthSphere();
-                System.out.println("Collided with Health");
-              
-            } //end health sphere
-            if ("Blue".equals(event.getNodeB().getName()) || "Blue".equals(event.getNodeA().getName()) && (event.getLifeTime() == 1)) {
-                
-                blueSphereNode.detachAllChildren();
-                blueSphereController.setEnabled(false);
-                
-                playerHealth = playerHealth - 20;
-                
-              //updates health bar GUI
-                updateHealthBar();
-                AudioNode punchSound = new AudioNode(assetManager, "Sounds/punch.wav");
-                punchSound.setPositional(false);
-                rootNode.attachChild(punchSound);
-                punchSound.playInstance();
-                
-                initBlueEnemy();
-                System.out.println("Collided with Blue");
-                
-            } //end blue sphere
-            if ("Red".equals(event.getNodeB().getName()) || "Red".equals(event.getNodeA().getName()) && (event.getLifeTime() == 1)) {
-                
-                redSphereNode.detachAllChildren();
-                redSphereController.setEnabled(false);
-                
-                playerHealth = playerHealth - 15;
-                
-              //updates health bar GUI
-                updateHealthBar();
-                AudioNode punchSound = new AudioNode(assetManager, "Sounds/punch.wav");
-                punchSound.setPositional(false);
-                rootNode.attachChild(punchSound);
-                punchSound.playInstance();
-                
-                initRedEnemy();
-                System.out.println("Collided with Red");
-                
-            } //end redsphere
-            if ("Yellow".equals(event.getNodeB().getName()) || "Yellow".equals(event.getNodeA().getName()) && (event.getLifeTime() == 1)) {
-                
-                yellowSphereNode.detachAllChildren();
-                yellowSphereController.setEnabled(false);
-                
-                playerHealth = playerHealth - 10;
-                
-              //updates health bar GUI
-                updateHealthBar();
-                AudioNode punchSound = new AudioNode(assetManager, "Sounds/punch.wav");
-                punchSound.setPositional(false);
-                rootNode.attachChild(punchSound);
-                punchSound.playInstance();
-                
-                initYellowEnemy();
-               System.out.println("Collided with Yellow");
-                
-            } //end yellow sphere 
-            if ("Cyan".equals(event.getNodeB().getName()) || "Cyan".equals(event.getNodeA().getName()) && (event.getLifeTime() == 1)) {
-                
-                cyanSphereNode.detachAllChildren();
-                cyanSphereController.setEnabled(false);
-                
-                playerHealth = playerHealth - 10;
-                
-              //updates health bar GUI
-                updateHealthBar();
-                AudioNode punchSound = new AudioNode(assetManager, "Sounds/punch.wav");
-                punchSound.setPositional(false);
-                rootNode.attachChild(punchSound);
-                punchSound.playInstance();
-                
-                initCyanEnemy();
-                
-                System.out.println("Collided with Cyan");
-                
-            } //end cyan sphere             
-        }//end player collision        
-        
-        
-    } //end collision
     
     private void createShockwave(){
         
@@ -1036,6 +700,7 @@ public class Main extends SimpleApplication implements PhysicsCollisionListener 
     } //end createFlame()
     
     private void createSmokeTrail(){
+        
         smoketrail = new ParticleEmitter("SmokeTrail", Type.Triangle, 22 * COUNT_FACTOR);
         smoketrail.setStartColor(new ColorRGBA(1f, 0.8f, 0.36f, (float) (1.0f / COUNT_FACTOR_F)));
         smoketrail.setEndColor(new ColorRGBA(1f, 0.8f, 0.36f, 0f));
@@ -1073,23 +738,90 @@ public class Main extends SimpleApplication implements PhysicsCollisionListener 
         guiNode.attachChild(healthBar);
         guiNode.attachChild(healthHUD);
         
-        
-        
-     //tells game to play heart beat if player is at 20 or less health
-        while (playerHealth <= 20 && !isPlaying){
-            AudioNode heartBeatSound = new AudioNode(assetManager, "Sounds/heartbeat.wav");
-            heartBeatSound.setPositional(false);
-            guiNode.attachChild(heartBeatSound);
-            heartBeatSound.play();
+      //prevents the sound from playing multiple times.  
+        boolean isPlaying;
+        if (heartBeatSound.getStatus().equals(AudioSource.Status.Playing)) {
             isPlaying = true;
         }
-        if (playerHealth > 20){
+        else {
             isPlaying = false;
         }
         
-        System.out.println(playerHealth);
+        
+     //tells game to play heart beat if player is at 20 or less health
+        if ((playerHealth <= 20) && (!isPlaying)) {
+            heartBeatSound.play();
+        }
+        else if (playerHealth > 20 &&(isPlaying)) {
+            heartBeatSound.stop();
+        }
+        if ((playerHealth <= 0)) {
+            endReason = "You died.";
+        }
+        
     
     } //end updateHealthBar
+    
+    /*
+     * Initializes all sounds
+     */
+    private void initSounds() {
+        
+        laserSound = new AudioNode(assetManager, "Sounds/laser1.wav");
+        laserSound.setPositional(true);
+        laserSound.setVolume(.5f);
+        rootNode.attachChild(laserSound);
+        
+        explosionSound = new AudioNode(assetManager, "Sounds/boom.wav");
+        explosionSound.setPositional(false);
+        explosionSound.setVolume(.4f);
+        rootNode.attachChild(laserSound);
+        
+        heartBeatSound = new AudioNode(assetManager, "Sounds/heartbeat.wav");
+        heartBeatSound.setPositional(false);
+        rootNode.attachChild(heartBeatSound);
+        heartBeatSound.setLooping(true);
+        
+        healthSound = new AudioNode(assetManager, "Sounds/healthpickup.wav");
+        healthSound.setPositional(false);
+        rootNode.attachChild(healthSound);
+        
+        
+        punchSound = new AudioNode(assetManager, "Sounds/punch.wav");
+        punchSound.setPositional(false);
+        rootNode.attachChild(punchSound);
+        
+        
+    } //end initSound
+    
+    private void endGame(){
+        
+        rootNode.detachAllChildren();
+        guiNode.detachAllChildren();
+        flyCam.setEnabled(false);
+        
+        
+      //displays Game Over text and reason that the game is over
+      //eg. "You died." (player ran out of health) or "No time remaining" (5 minutes has passed)
+        BitmapText gameOverText = new BitmapText(guiFont);
+        gameOverText.setSize(guiFont.getCharSet().getRenderedSize()+10);
+        gameOverText.setColor(ColorRGBA.Green);                        
+        gameOverText.setText("GAME OVER");          
+        gameOverText.setLocalTranslation(((settings.getWidth()/2)-(gameOverText.getLineWidth()/2)),
+                (settings.getHeight() - (gameOverText.getLineHeight()/2) - 15), 0);
+        guiNode.attachChild(gameOverText);
+        
+        BitmapText reasonText = new BitmapText(guiFont);
+        reasonText.setSize(guiFont.getCharSet().getRenderedSize()+5);
+        reasonText.setColor(ColorRGBA.White);
+        reasonText.setText(endReason);
+        reasonText.setLocalTranslation(((settings.getWidth()/2)-(reasonText.getLineWidth()/2)), 
+                (settings.getHeight() - (gameOverText.getLineHeight()) - 25), 0);
+        guiNode.attachChild(reasonText);      
+
+        rootNode.attachChild(guiNode);
+        
+    }
     
     /*
      * Called from simpleUpdate, this method keeps
@@ -1100,4 +832,466 @@ public class Main extends SimpleApplication implements PhysicsCollisionListener 
         
     }
     
-}
+    private void blueShootCollision() {
+
+        laser.detachAllChildren();
+        laser.removeControl(laserController);
+        rootNode.detachChild(laser);
+        laserController.destroy();
+        blueSphereController.destroy();
+        blueSphereNode.detachAllChildren();
+        blueSphereNode.removeControl(blueSphereController);
+
+      //instantiates audio  
+        explosionNode.attachChild(explosionSound);
+        explosionNode.setLocalTranslation(blueSphereNode.getLocalTranslation());
+        rootNode.attachChild(explosionNode);
+
+      //plays shockwave and sound  
+        shockwave.emitAllParticles();
+        flash.emitAllParticles();
+        flame.emitAllParticles();
+        smoketrail.emitAllParticles();
+        explosionSound.playInstance();      
+
+
+        //keeps score  
+        score = score + 20;
+        scoreHUD.setText(Integer.toString(score));
+        blueDestroyed++;
+        blueHUD.setText(Integer.toString(blueDestroyed));
+        hitCount++;
+        System.out.println("hit" + hitCount);
+
+        blueCollide=false;
+        
+      //spawns a new sphere
+        initBlueEnemy();
+                
+    } //end blueCollision
+    
+    private void redShootCollision() {
+
+        laser.detachAllChildren();
+        laser.removeControl(laserController);
+        rootNode.detachChild(laser);
+        laserController.destroy();
+        redSphereController.destroy();
+        redSphereNode.detachAllChildren();
+        redSphereNode.removeControl(redSphereController);
+
+      //instantiates audio  
+        explosionNode.attachChild(explosionSound);
+        explosionNode.setLocalTranslation(redSphereNode.getLocalTranslation());
+        rootNode.attachChild(explosionNode);
+
+      //plays shockwave and sound  
+        shockwave.emitAllParticles();
+        flash.emitAllParticles();
+        flame.emitAllParticles();
+        smoketrail.emitAllParticles();
+        explosionSound.playInstance();      
+
+
+        //keeps score  
+        score = score + 20;
+        scoreHUD.setText(Integer.toString(score));
+        redDestroyed++;
+        redHUD.setText(Integer.toString(redDestroyed));
+        hitCount++;
+        System.out.println("hit" + hitCount);
+
+        redCollide=false;
+        
+      //spawns a new sphere
+        initRedEnemy();
+    }
+    
+    private void yellowShootCollision() {
+
+        laser.detachAllChildren();
+        laser.removeControl(laserController);
+        rootNode.detachChild(laser);
+        laserController.destroy();
+        yellowSphereController.destroy();
+        yellowSphereNode.detachAllChildren();
+        yellowSphereNode.removeControl(yellowSphereController);
+
+      //instantiates audio  
+        explosionNode.attachChild(explosionSound);
+        explosionNode.setLocalTranslation(yellowSphereNode.getLocalTranslation());
+        rootNode.attachChild(explosionNode);
+
+      //plays shockwave and sound  
+        shockwave.emitAllParticles();
+        flash.emitAllParticles();
+        flame.emitAllParticles();
+        smoketrail.emitAllParticles();
+        explosionSound.playInstance();      
+
+        //keeps score  
+        score = score + 20;
+        scoreHUD.setText(Integer.toString(score));
+        yellowDestroyed++;
+        yellowHUD.setText(Integer.toString(yellowDestroyed));
+        hitCount++;
+        System.out.println("hit" + hitCount);
+
+        yellowCollide=false;
+      //spawns a new sphere
+        initYellowEnemy();
+        
+    }
+    
+    private void cyanShootCollision() {
+
+        laser.detachAllChildren();
+        laser.removeControl(laserController);
+        rootNode.detachChild(laser);
+        laserController.destroy();
+        cyanSphereController.destroy();
+        cyanSphereNode.detachAllChildren();
+        cyanSphereNode.removeControl(cyanSphereController);
+        
+      //instantiates audio  
+        explosionNode.attachChild(explosionSound);
+        explosionNode.setLocalTranslation(cyanSphereNode.getLocalTranslation());
+        rootNode.attachChild(explosionNode);
+
+
+      //plays shockwave and sound  
+        shockwave.emitAllParticles();
+        flash.emitAllParticles();
+        flame.emitAllParticles();
+        smoketrail.emitAllParticles();
+        explosionSound.playInstance();      
+
+        //keeps score  
+        score = score + 20;
+        scoreHUD.setText(Integer.toString(score));
+        cyanDestroyed++;
+        cyanHUD.setText(Integer.toString(cyanDestroyed));
+        hitCount++;
+        System.out.println("hit" + hitCount);
+
+      //spawns a new sphere
+        cyanCollide = false;
+        initCyanEnemy();
+
+    }
+    
+    private void healthShootCollision() {
+        
+        laser.detachAllChildren();
+        laser.removeControl(laserController);        
+        healthSphereNode.detachAllChildren();       
+
+      //instantiates audio  
+        explosionNode.attachChild(explosionSound);
+        explosionNode.setLocalTranslation(healthSphereNode.getLocalTranslation());
+        rootNode.attachChild(explosionNode);
+
+        punchSound.playInstance();
+
+
+
+      //plays shockwave and sound  
+        shockwave.emitAllParticles();
+        flash.emitAllParticles();
+        flame.emitAllParticles();
+        smoketrail.emitAllParticles();
+        explosionSound.playInstance();
+
+      //keeps score  
+        score = score - 5;
+        scoreHUD.setText(Integer.toString(score));             
+
+        healthCollide=false;
+        
+      //spawns new sphere
+        initHealthSphere();
+    }
+    
+    private void bluePlayerCollision() {
+        
+      //garbage collection  
+        blueSphereNode.detachAllChildren();
+        rootNode.detachChild(blueSphereNode);
+        blueSphereNode.removeControl(blueSphereController);
+        blueSphereController.destroy();
+
+        playerHealth = playerHealth - 20;
+
+      //updates health bar GUI
+        updateHealthBar();
+        punchSound.playInstance();
+
+        playerBlueCollide = false;
+
+        initBlueEnemy();
+    }
+    
+    private void redPlayerCollision() {
+        
+        redSphereNode.detachAllChildren();
+        rootNode.detachChild(redSphereNode);
+        redSphereNode.removeControl(redSphereController);
+        redSphereController.destroy();
+
+        playerHealth = playerHealth - 15;
+
+      //updates health bar GUI
+        updateHealthBar();
+        punchSound.playInstance();
+
+        playerRedCollide = false;
+
+        initRedEnemy();
+    }
+    
+    private void yellowPlayerCollision() {
+        
+      //garbage collection  
+        yellowSphereNode.detachAllChildren();
+        rootNode.detachChild(yellowSphereNode);
+        yellowSphereNode.removeControl(yellowSphereController);
+        yellowSphereController.destroy();
+
+        playerHealth = playerHealth - 10;
+
+      //updates health bar GUI
+        updateHealthBar();
+        punchSound.playInstance();
+
+        playerYellowCollide = false;
+
+        initYellowEnemy(); 
+    }
+    
+    private void cyanPlayerCollision() {
+        
+        cyanSphereNode.detachAllChildren();
+        rootNode.detachChild(cyanSphereNode);
+        cyanSphereNode.removeControl(cyanSphereController);
+        cyanSphereController.destroy();
+
+        playerHealth = playerHealth - 10;
+
+      //updates health bar GUI
+        updateHealthBar();
+        punchSound.playInstance();
+
+        playerCyanCollide = false;
+
+        initCyanEnemy();
+    }
+    
+    private void healthPlayerCollision() {
+        
+        healthSphereNode.detachAllChildren();
+        healthSphereNode.removeControl(healthSphereController);
+
+      //player's health cannot be over 100.  
+        if (playerHealth < 100){
+            if (playerHealth <= 90){
+                playerHealth = playerHealth+10;
+            }
+            else if (playerHealth > 90){
+                int tempHealth = 100 - playerHealth;
+                playerHealth = playerHealth + tempHealth;
+            }
+        }
+      //updates the health bar GUI  
+        updateHealthBar();
+
+        healthSound.playInstance();
+
+        playerHealthCollide = false;
+
+        initHealthSphere();
+    }
+    
+    /*
+     * Checks for all collisions and performs actions.
+     */
+    private void collideChecker() {
+        
+        if (blueCollide){
+            blueShootCollision();
+        }
+        if (redCollide){
+            redShootCollision();
+        }
+        if (yellowCollide){
+            yellowShootCollision();
+        }
+        if (cyanCollide){
+            cyanShootCollision();
+        }
+        if (healthCollide){
+            healthShootCollision();
+        }
+        if (playerBlueCollide){
+            bluePlayerCollision();
+        }
+        if (playerRedCollide){
+            redPlayerCollision();
+        }
+        if (playerYellowCollide){
+            yellowPlayerCollision();
+        }
+        if (playerCyanCollide){
+            cyanPlayerCollision();
+        }
+        if (playerHealthCollide){
+            healthPlayerCollision();
+        }
+    } //end collideChecker
+    
+    /*
+     *  checks the bounds of  the spheres and redraws them if they are out of the arena bounds.
+     */
+    private void sphereOutofBoundsChecker() {
+        if (blueSphereController.getPhysicsLocation().x > 1000
+                || blueSphereController.getPhysicsLocation().y > 1000
+                || blueSphereController.getPhysicsLocation().y < -10
+                || blueSphereController.getPhysicsLocation().z > 1000) {
+            
+            blueSphereNode.detachAllChildren();
+            initBlueEnemy();
+        }
+        if (redSphereController.getPhysicsLocation().x > 1000
+                || redSphereController.getPhysicsLocation().y > 1000
+                || redSphereController.getPhysicsLocation().y < -10
+                || redSphereController.getPhysicsLocation().z > 1000) {
+            
+            redSphereNode.detachAllChildren();
+            initRedEnemy();
+        }
+        if (yellowSphereController.getPhysicsLocation().x > 1000
+                || yellowSphereController.getPhysicsLocation().y > 1000
+                || yellowSphereController.getPhysicsLocation().y < -10
+                || yellowSphereController.getPhysicsLocation().z > 1000) {
+            
+            yellowSphereNode.detachAllChildren();
+            initYellowEnemy();
+        }
+        if (cyanSphereController.getPhysicsLocation().x > 1000
+                || cyanSphereController.getPhysicsLocation().y > 1000
+                || cyanSphereController.getPhysicsLocation().y < -10
+                || cyanSphereController.getPhysicsLocation().z > 1000) {
+            
+            cyanSphereNode.detachAllChildren();
+            initCyanEnemy();
+        }
+        if (healthSphereController.getPhysicsLocation().x > 1000
+                || healthSphereController.getPhysicsLocation().y > 1000
+                || healthSphereController.getPhysicsLocation().y < -10
+                || healthSphereController.getPhysicsLocation().z > 1000) {
+            
+            healthSphereNode.detachAllChildren();
+            initHealthSphere();
+        }
+    }
+    
+    private class ProjectileCollisionControl extends GhostControl implements PhysicsTickListener {
+    
+        public ProjectileCollisionControl(CollisionShape shape) {
+            super(shape);
+        }
+    
+        public void prePhysicsTick (PhysicsSpace space, float tpf) {
+        
+         }
+    
+        public void physicsTick(PhysicsSpace space, float tpf) {
+            
+        
+            for (int i = 0; i < getOverlappingObjects().size(); i++){
+
+                if (getOverlappingObjects().get(i).equals(blueSphereController)){
+                    physicsState.getPhysicsSpace().remove(laserController);
+                    physicsState.getPhysicsSpace().remove(blueSphereController);
+                    physicsState.getPhysicsSpace().removeTickListener(this);
+                    blueCollide=true; 
+                    return;
+                }
+                if (getOverlappingObjects().get(i).equals(redSphereController)){
+                    redCollide=true;
+                    physicsState.getPhysicsSpace().remove(laserController);                   
+                    physicsState.getPhysicsSpace().remove(redSphereController);
+                    return;
+                }
+                if (getOverlappingObjects().get(i).equals(yellowSphereController)){
+                    physicsState.getPhysicsSpace().remove(laserController);   
+                    physicsState.getPhysicsSpace().remove(yellowSphereController);
+                    physicsState.getPhysicsSpace().removeTickListener(this);
+                    yellowCollide=true;
+                    return;
+                }
+                if (getOverlappingObjects().get(i).equals(cyanSphereController)){
+                    physicsState.getPhysicsSpace().remove(laserController);   
+                    physicsState.getPhysicsSpace().remove(cyanSphereController);
+                    physicsState.getPhysicsSpace().removeTickListener(this);
+                    cyanCollide=true;
+                    return;
+                }
+                if (getOverlappingObjects().get(i).equals(healthSphereController)){
+                    physicsState.getPhysicsSpace().remove(laserController);
+                    physicsState.getPhysicsSpace().remove(healthSphereController);
+                    physicsState.getPhysicsSpace().removeTickListener(this);
+                    healthCollide=true;
+                    return;
+                }
+            } //end for
+            
+        } //end physicsTick
+    
+    
+    } //end ProjectileCollisionControl
+    private class CharacterCollisionControl extends GhostControl implements PhysicsTickListener {
+        
+        public CharacterCollisionControl(CollisionShape shape) {
+            super(shape);
+        }        
+
+        public void prePhysicsTick(PhysicsSpace space, float tpf) {
+            
+        }
+
+        public void physicsTick(PhysicsSpace space, float tpf) {
+            
+            for (int i = 0; i < getOverlappingObjects().size(); i++){
+
+                if (getOverlappingObjects().get(i).equals(blueSphereController)){
+                    physicsState.getPhysicsSpace().remove(blueSphereController);
+                    playerBlueCollide = true;
+                    return;
+                }
+                if (getOverlappingObjects().get(i).equals(redSphereController)){                  
+                    physicsState.getPhysicsSpace().remove(redSphereController);
+                    playerRedCollide = true;
+                    return;
+                }
+                if (getOverlappingObjects().get(i).equals(yellowSphereController)){ 
+                    physicsState.getPhysicsSpace().remove(yellowSphereController);
+                    playerYellowCollide = true;
+                    return;
+                }
+                if (getOverlappingObjects().get(i).equals(cyanSphereController)){  
+                    physicsState.getPhysicsSpace().remove(cyanSphereController);
+                    playerCyanCollide = true;
+                    return;
+                }
+                if (getOverlappingObjects().get(i).equals(healthSphereController)){
+                    physicsState.getPhysicsSpace().remove(healthSphereController);
+                    playerHealthCollide = true;
+                    return;
+                }
+            } //end for            
+        }
+        
+    }
+} //end public class
+
+
