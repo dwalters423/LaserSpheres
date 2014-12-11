@@ -16,8 +16,6 @@ import com.jme3.audio.AudioSource;
 import com.jme3.bullet.BulletAppState;
 import com.jme3.bullet.PhysicsSpace;
 import com.jme3.bullet.PhysicsTickListener;
-import com.jme3.bullet.collision.PhysicsCollisionEvent;
-import com.jme3.bullet.collision.PhysicsCollisionListener;
 import com.jme3.bullet.collision.shapes.BoxCollisionShape;
 import com.jme3.bullet.collision.shapes.CapsuleCollisionShape;
 import com.jme3.bullet.collision.shapes.CollisionShape;
@@ -36,13 +34,9 @@ import com.jme3.input.controls.KeyTrigger;
 import com.jme3.input.controls.MouseButtonTrigger;
 import com.jme3.light.AmbientLight;
 import com.jme3.material.Material;
-import com.jme3.material.RenderState.BlendMode;
 import com.jme3.math.ColorRGBA;
 import com.jme3.math.Vector3f;
-import com.jme3.post.FilterPostProcessor;
-import com.jme3.post.filters.BloomFilter;
 import com.jme3.renderer.RenderManager;
-import com.jme3.renderer.queue.RenderQueue;
 import com.jme3.scene.Geometry;
 import com.jme3.scene.Node;
 import com.jme3.scene.shape.Box;
@@ -53,9 +47,10 @@ import com.jme3.util.SkyFactory;
 public class Main extends SimpleApplication {
     
     private RigidBodyControl playerController = new RigidBodyControl();
-    private RigidBodyControl blueSphereController, redSphereController, yellowSphereController,
-            cyanSphereController, healthSphereController;
-    protected RigidBodyControl laserController;
+    private RigidBodyControl  blueSphereController = new RigidBodyControl (10), redSphereController = new RigidBodyControl (10), 
+            yellowSphereController = new RigidBodyControl (10), cyanSphereController = new RigidBodyControl(10), 
+            healthSphereController = new RigidBodyControl (10);
+    protected RigidBodyControl laserController  = new RigidBodyControl(10f);
     private BulletAppState physicsState = new BulletAppState();
     protected  CharacterControl character;
     private Material wallMaterial, floorMaterial, laserMaterial, blueEnemyMat, redEnemyMat,
@@ -66,7 +61,7 @@ public class Main extends SimpleApplication {
     private Vector3f walkDirection = new Vector3f(0,0,0); 
     private Vector3f camDir = new Vector3f();
     private Vector3f camLeft = new Vector3f();    
-    protected Node laser = new Node(), blueSphereNode = new Node(), redSphereNode = new Node(), 
+    private Node laser = new Node(), blueSphereNode = new Node(), redSphereNode = new Node(), 
             yellowSphereNode = new Node(), cyanSphereNode = new Node(), healthSphereNode = new Node();
     private Node explosionNode = new Node();
     private ParticleEmitter shockwave, flash, flame, smoketrail;
@@ -82,7 +77,7 @@ public class Main extends SimpleApplication {
     private int hitCount = 0;
     private int playerHealth = 100;
     protected BitmapText scoreHUD, highScoreHUD, blueHUD, redHUD, yellowHUD, cyanHUD, 
-            shotsFiredHUD, healthHUD, timeHUD;
+            shotsFiredHUD, healthHUD, timeHUD, damageText;
     private RandomPhysics randomPhy = new RandomPhysics();
     private Box healthBarBox;
     private Geometry healthBar;
@@ -92,6 +87,22 @@ public class Main extends SimpleApplication {
             cyanCollide = false, healthCollide=false;
     private boolean playerBlueCollide = false, playerRedCollide = false, playerYellowCollide = false,
             playerCyanCollide = false, playerHealthCollide = false;
+    private boolean damageTextOn = false;
+    private CollisionShape laserShape = new BoxCollisionShape(new Vector3f(5f,5f,5f));
+    private Sphere laserMesh = new Sphere(3,3,3);
+    private Geometry laserGeom = new Geometry ("Laser",laserMesh);
+    private ProjectileCollisionControl laserControllerTick = new ProjectileCollisionControl(laserShape);
+    private Sphere redSphere = new Sphere (15,15,15);
+    private Geometry redSphereGeom = new Geometry("Red Enemy", redSphere);
+    private Sphere yellowSphere = new Sphere (20,20,20);
+    private Geometry yellowSphereGeom = new Geometry("Yellow Enemy", yellowSphere);
+    private Sphere cyanSphere = new Sphere (25,25,25);
+    private Geometry cyanSphereGeom = new Geometry("Cyan Enemy", cyanSphere);
+    private Sphere blueSphere = new Sphere (10,10,10);
+    private Geometry blueSphereGeom = new Geometry("Blue Enemy", blueSphere);
+    private Sphere healthSphere = new Sphere (10,10,10);
+    private Geometry healthSphereGeom = new Geometry("Health Sphere", healthSphere);
+    
     
     
     public static void main(String[] args) {
@@ -105,14 +116,6 @@ public class Main extends SimpleApplication {
        flyCam.setEnabled(true);
 
        cam.setFrustumFar(2000);
-        
-      //initializes glow with the FilterPost Processor  
-       FilterPostProcessor fpp=new FilterPostProcessor(assetManager);
-       BloomFilter bloom = new BloomFilter(BloomFilter.GlowMode.Objects);
-       bloom.setBloomIntensity(3f);
-       fpp.addFilter(bloom);    
-       viewPort.addProcessor(fpp);
-        
         
      //initializes key inputs   
        initKeyMapping();
@@ -128,7 +131,7 @@ public class Main extends SimpleApplication {
         initEnvironment();
         initPlayer();
         
-        
+        initEnemies();
         initBlueEnemy();
         initRedEnemy();
         initYellowEnemy();
@@ -175,6 +178,12 @@ public class Main extends SimpleApplication {
         }
         sphereOutofBoundsChecker();
         collideChecker();
+        if (damageTextOn){
+            damageText.setSize(damageText.getSize() - 0.004f);
+        }
+        if (damageText.getSize() <= 0){
+            damageText.setText(" ");
+        }
         
     } //end update loop.
     
@@ -352,8 +361,36 @@ public class Main extends SimpleApplication {
                 - healthAnnouncerHUD.getLineHeight(), 0);
         guiNode.attachChild(healthHUD);
         
+        damageText = new BitmapText(guiFont);
+        damageText.setLocalTranslation((settings.getWidth()/2) - 40, settings.getHeight() - 50, 0);
+        guiNode.attachChild(damageText);
+        
     }
-    
+    /*
+     * initEnemies sets the geometries and materials for the spheres.
+     */
+    private void initEnemies() {
+        
+        laserGeom.setMaterial(laserMaterial);
+        laser.setName("Laser");
+        
+        healthSphereGeom.setMaterial(healthMaterial);      
+        healthSphereNode.setName("Health");
+        
+        blueSphereGeom.setMaterial(blueEnemyMat);
+        blueSphereNode.setName("Blue");
+        
+        redSphereGeom.setMaterial(redEnemyMat);
+        redSphereNode.setName("Red");
+        
+        yellowSphereGeom.setMaterial(yellowEnemyMat);     
+        yellowSphereNode.setName("Yellow");
+        
+        cyanSphereGeom.setMaterial(cyanEnemyMat);
+        cyanSphereNode.setName("Cyan");
+        
+        
+    }
     
     /*
      * Sets the textures for the game, including walls, floors, and targets.
@@ -369,8 +406,8 @@ public class Main extends SimpleApplication {
       //sets the  material for the lasers
         laserMaterial = new Material(assetManager, "Common/MatDefs/Misc/Unshaded.j3md");
         laserMaterial.setColor("Color", new ColorRGBA (0,1,0, 0.8f));
-        laserMaterial.getAdditionalRenderState().setBlendMode(BlendMode.Alpha);
-        laserMaterial.setColor("GlowColor", ColorRGBA.Green);
+        //laserMaterial.getAdditionalRenderState().setBlendMode(BlendMode.Alpha);
+        //laserMaterial.setColor("GlowColor", ColorRGBA.Green);
         
       //sets materials for enemy spheres
         redEnemyMat = new Material(assetManager, "Common/MatDefs/Misc/Unshaded.j3md");
@@ -452,7 +489,8 @@ public class Main extends SimpleApplication {
         
         
        //attaches environment to the scene  
-        rootNode.attachChild(environmentNode);    
+        rootNode.attachChild(environmentNode);   
+
     } //end initEnvironment
     
     private void initPlayer() {
@@ -478,17 +516,11 @@ public class Main extends SimpleApplication {
     private void initBlueEnemy() {
                 
       //initiates the sphere geometry
-        Sphere blueSphere = new Sphere (10,10,10);
-        Geometry blueSphereGeom = new Geometry("Blue Enemy", blueSphere);
-        blueSphereGeom.setMaterial(blueEnemyMat);
-        
-        blueSphereController = new RigidBodyControl (10);
-        blueSphereNode.setName("Blue");
         blueSphereNode.attachChild(blueSphereGeom);
         blueSphereNode.addControl(blueSphereController);
         
         blueSphereController.setPhysicsLocation(randomPhy.getRandomYPosVector3f(450, 20, 450));
-        blueSphereController.setLinearVelocity(randomPhy.getRandomVector3f(100, 0, 100));
+        blueSphereController.setLinearVelocity(randomPhy.getRandomVector3f(100, 0, 100).multLocal(2f));
         
       //adds the collision object to the physics space
         physicsState.getPhysicsSpace().add(blueSphereController);
@@ -500,18 +532,11 @@ public class Main extends SimpleApplication {
     
     private void initRedEnemy() {
                     
-      //initiates the sphere geometry
-        Sphere redSphere = new Sphere (15,15,15);
-        Geometry redSphereGeom = new Geometry("Red Enemy", redSphere);
-        redSphereGeom.setMaterial(redEnemyMat);
-        
-        redSphereController = new RigidBodyControl (10);
-        redSphereNode.setName("Red");
         redSphereNode.attachChild(redSphereGeom);
         redSphereNode.addControl(redSphereController); 
         
         redSphereController.setPhysicsLocation(randomPhy.getRandomYPosVector3f(450, 20, 450));
-        redSphereController.setLinearVelocity(randomPhy.getRandomVector3f(100, 0, 100));
+        redSphereController.setLinearVelocity(randomPhy.getRandomVector3f(100, 0, 100).multLocal(1.7f));
         
       //adds the collision object to the physics space
         physicsState.getPhysicsSpace().add(redSphereController);
@@ -523,18 +548,11 @@ public class Main extends SimpleApplication {
     
     private void initYellowEnemy() {
                
-      //initiates the sphere geometry
-        Sphere yellowSphere = new Sphere (20,20,20);
-        Geometry yellowSphereGeom = new Geometry("Yellow Enemy", yellowSphere);
-        yellowSphereGeom.setMaterial(yellowEnemyMat);
-        
-        yellowSphereController = new RigidBodyControl (10);
-        yellowSphereNode.setName("Yellow");
         yellowSphereNode.attachChild(yellowSphereGeom);
         yellowSphereNode.addControl(yellowSphereController);
         
         yellowSphereController.setPhysicsLocation(randomPhy.getRandomYPosVector3f(450, 20, 450));
-        yellowSphereController.setLinearVelocity(randomPhy.getRandomVector3f(100, 0, 100));
+        yellowSphereController.setLinearVelocity(randomPhy.getRandomVector3f(100, 0, 100).multLocal(1.4f));
         
       //adds the collision object to the physics space
         physicsState.getPhysicsSpace().add(yellowSphereController);
@@ -547,17 +565,12 @@ public class Main extends SimpleApplication {
     private void initCyanEnemy() {
         
       //initiates the sphere geometry
-        Sphere cyanSphere = new Sphere (25,25,25);
-        Geometry cyanSphereGeom = new Geometry("Cyan Enemy", cyanSphere);
-        cyanSphereGeom.setMaterial(cyanEnemyMat);
-        
-        cyanSphereController = new RigidBodyControl (10);
-        cyanSphereNode.setName("Cyan");
+
         cyanSphereNode.attachChild(cyanSphereGeom);
         cyanSphereNode.addControl(cyanSphereController);
         
         cyanSphereController.setPhysicsLocation(randomPhy.getRandomYPosVector3f(450, 20, 450));
-        cyanSphereController.setLinearVelocity(randomPhy.getRandomVector3f(100, 0, 100));
+        cyanSphereController.setLinearVelocity(randomPhy.getRandomVector3f(100, 0, 100).multLocal(1.2f));
         
       //adds the collision object to the physics space
         physicsState.getPhysicsSpace().add(cyanSphereController);
@@ -570,17 +583,10 @@ public class Main extends SimpleApplication {
     private void initHealthSphere() {
         
       //initiates the sphere geometry
-        Sphere healthSphere = new Sphere (10,10,10);
-        Geometry healthSphereGeom = new Geometry("Health Sphere", healthSphere);
-        healthSphereGeom.setMaterial(healthMaterial);
-        
-        healthSphereController = new RigidBodyControl (10);
-        healthSphereNode.setName("Health");
         healthSphereNode.attachChild(healthSphereGeom);
         healthSphereNode.addControl(healthSphereController);
           
         healthSphereController.setPhysicsLocation(randomPhy.getRandomYPosVector3f(450, 20, 450));
-        healthSphereController.setLinearVelocity(randomPhy.getRandomVector3f(100, 0, 100));
         
       //adds the collision object to the physics space
         physicsState.getPhysicsSpace().add(healthSphereController);
@@ -591,20 +597,9 @@ public class Main extends SimpleApplication {
     } //end initHealthSphere  
     
     private void shoot() {
-        
-      //initializes laser geometry  
-        Sphere laserMesh = new Sphere(3,3,3);
-        Geometry laserGeom = new Geometry ("Laser",laserMesh);
-        laserGeom.setMaterial(laserMaterial);
-        laserGeom.setQueueBucket(RenderQueue.Bucket.Transparent);
-        
-        CollisionShape laserShape = new BoxCollisionShape(new Vector3f(5f,5f,5f));
-        laser.setName("Laser");
+
         laser.attachChild(laserGeom);
-        
       //initalizes controllers for laser  
-        ProjectileCollisionControl laserControllerTick = new ProjectileCollisionControl(laserShape);
-        laserController = new RigidBodyControl(10f);
         laser.addControl(laserController);
         laser.addControl(laserControllerTick);
         physicsState.getPhysicsSpace().add(laserController);
@@ -1025,6 +1020,10 @@ public class Main extends SimpleApplication {
       //updates health bar GUI
         updateHealthBar();
         punchSound.playInstance();
+        damageText.setColor(ColorRGBA.Blue);
+        damageText.setText("-20 Health \nTook damage from the blue sphere!");
+        damageText.setSize(guiFont.getCharSet().getRenderedSize()+5);
+        damageTextOn = true;
 
         playerBlueCollide = false;
 
@@ -1043,7 +1042,11 @@ public class Main extends SimpleApplication {
       //updates health bar GUI
         updateHealthBar();
         punchSound.playInstance();
-
+        damageText.setColor(ColorRGBA.Red);
+        damageText.setText("-15 Health \nTook damage from the red sphere!");
+        damageText.setSize(guiFont.getCharSet().getRenderedSize()+5);
+        damageTextOn = true;
+        
         playerRedCollide = false;
 
         initRedEnemy();
@@ -1062,6 +1065,10 @@ public class Main extends SimpleApplication {
       //updates health bar GUI
         updateHealthBar();
         punchSound.playInstance();
+        damageText.setColor(ColorRGBA.Yellow);
+        damageText.setText("-10 Health \nTook damage from the yellow sphere!");
+        damageText.setSize(guiFont.getCharSet().getRenderedSize()+5);
+        damageTextOn = true;
 
         playerYellowCollide = false;
 
@@ -1080,6 +1087,10 @@ public class Main extends SimpleApplication {
       //updates health bar GUI
         updateHealthBar();
         punchSound.playInstance();
+        damageText.setColor(ColorRGBA.Cyan);
+        damageText.setText("-10 Health \nTook damage from the cyan sphere!");
+        damageText.setSize(guiFont.getCharSet().getRenderedSize()+5);  
+        damageTextOn = true;
 
         playerCyanCollide = false;
 
@@ -1103,6 +1114,10 @@ public class Main extends SimpleApplication {
         }
       //updates the health bar GUI  
         updateHealthBar();
+        damageText.setColor(ColorRGBA.White);
+        damageText.setText("+10 Health \nCollected health sphere!");
+        damageText.setSize(guiFont.getCharSet().getRenderedSize()+5);
+        damageTextOn = true;
 
         healthSound.playInstance();
 
@@ -1194,16 +1209,6 @@ public class Main extends SimpleApplication {
             healthSphereNode.detachAllChildren();
             initHealthSphere();
         }
-        if (laser.getQuantity() > 0) {
-            if (laserController.getPhysicsLocation().x > 2000
-                || laserController.getPhysicsLocation().y > 2000
-                || laserController.getPhysicsLocation().z > 2000){
-            
-            laserController.destroy();
-            laser.detachAllChildren();
-            physicsState.getPhysicsSpace().remove(laserController);
-            }
-        }
     }
     
     private class ProjectileCollisionControl extends GhostControl implements PhysicsTickListener {
@@ -1225,7 +1230,7 @@ public class Main extends SimpleApplication {
                     physicsState.getPhysicsSpace().remove(laserController);
                     physicsState.getPhysicsSpace().remove(blueSphereController);
                     physicsState.getPhysicsSpace().removeTickListener(this);
-                    blueCollide=true; 
+                    blueCollide=true;
                     return;
                 }
                 if (getOverlappingObjects().get(i).equals(redSphereController)){
