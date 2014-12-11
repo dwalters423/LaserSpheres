@@ -613,7 +613,7 @@ public class Main extends SimpleApplication {
             
       //sets the shot direction to the direction of the player.  
         laserController.setPhysicsLocation(new Vector3f(cam.getLocation().x, cam.getLocation().y - 2, cam.getLocation().z +15));
-        laserController.setLinearVelocity(new Vector3f(cam.getDirection().x, cam.getDirection().y, cam.getDirection().z).mult(1200));
+        laserController.setLinearVelocity(new Vector3f(cam.getDirection().x, cam.getDirection().y, cam.getDirection().z).multLocal(1200));
       //plays the shooting sound  
         laserSound.playInstance();
         rootNode.attachChild(laser);
@@ -1150,6 +1150,8 @@ public class Main extends SimpleApplication {
     
     /*
      *  checks the bounds of  the spheres and redraws them if they are out of the arena bounds.
+     *  also checks the bounds of the laser and destroys the object so it is no longer rendered
+     *  when out of site of the game. increases performance.
      */
     private void sphereOutofBoundsChecker() {
         if (blueSphereController.getPhysicsLocation().x > 1000
@@ -1191,6 +1193,16 @@ public class Main extends SimpleApplication {
             
             healthSphereNode.detachAllChildren();
             initHealthSphere();
+        }
+        if (laser.getQuantity() > 0) {
+            if (laserController.getPhysicsLocation().x > 2000
+                || laserController.getPhysicsLocation().y > 2000
+                || laserController.getPhysicsLocation().z > 2000){
+            
+            laserController.destroy();
+            laser.detachAllChildren();
+            physicsState.getPhysicsSpace().remove(laserController);
+            }
         }
     }
     
