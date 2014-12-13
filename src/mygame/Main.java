@@ -13,6 +13,7 @@ package mygame;
 import com.jme3.app.SimpleApplication;
 import com.jme3.audio.AudioNode;
 import com.jme3.audio.AudioSource;
+import com.jme3.audio.AudioSource.Status;
 import com.jme3.bullet.BulletAppState;
 import com.jme3.bullet.PhysicsSpace;
 import com.jme3.bullet.PhysicsTickListener;
@@ -43,10 +44,11 @@ import com.jme3.scene.shape.Box;
 import com.jme3.scene.shape.Sphere;
 import com.jme3.ui.Picture;
 import com.jme3.util.SkyFactory;
+import java.util.ArrayList;
+import javax.swing.JOptionPane;
 
 public class Main extends SimpleApplication {
     
-    private RigidBodyControl playerController = new RigidBodyControl();
     private RigidBodyControl  blueSphereController = new RigidBodyControl (10), redSphereController = new RigidBodyControl (10), 
             yellowSphereController = new RigidBodyControl (10), cyanSphereController = new RigidBodyControl(10), 
             healthSphereController = new RigidBodyControl (10);
@@ -74,19 +76,19 @@ public class Main extends SimpleApplication {
     private int redDestroyed = 0;
     private int yellowDestroyed = 0;
     private int cyanDestroyed = 0;
-    private int hitCount = 0;
     private int playerHealth = 100;
     protected BitmapText scoreHUD, highScoreHUD, blueHUD, redHUD, yellowHUD, cyanHUD, 
-            shotsFiredHUD, healthHUD, timeHUD, damageText;
+            shotsFiredHUD, healthHUD, timeHUD, damageText, scoreAnimationText;
     private RandomPhysics randomPhy = new RandomPhysics();
     private Box healthBarBox;
     private Geometry healthBar;
-    private AudioNode explosionSound, heartBeatSound, laserSound, healthSound, punchSound;
+    private AudioNode explosionSound, heartBeatSound, laserSound, healthSound, punchSound, winSound, timeRemainingSound;
     private String endReason;
     private boolean blueCollide = false, redCollide = false, yellowCollide = false,
             cyanCollide = false, healthCollide=false;
     private boolean playerBlueCollide = false, playerRedCollide = false, playerYellowCollide = false,
             playerCyanCollide = false, playerHealthCollide = false;
+    private boolean isGameRunning = true;
     private boolean damageTextOn = false;
     private CollisionShape laserShape = new BoxCollisionShape(new Vector3f(5f,5f,5f));
     private Sphere laserMesh = new Sphere(3,3,3);
@@ -102,7 +104,12 @@ public class Main extends SimpleApplication {
     private Geometry blueSphereGeom = new Geometry("Blue Enemy", blueSphere);
     private Sphere healthSphere = new Sphere (10,10,10);
     private Geometry healthSphereGeom = new Geometry("Health Sphere", healthSphere);
-    
+    private int second = 15, minute = 5;
+    private long initialTime;
+    private HighScore highScoreList = new HighScore();
+    private boolean scoreAnim = false;
+    private int scoreAnimation;
+    private long testable;
     
     
     public static void main(String[] args) {
@@ -112,13 +119,41 @@ public class Main extends SimpleApplication {
 
     @Override
     public void simpleInitApp() {
+       
+       isGameRunning = false;
+       Picture pic = new Picture("Introduction picture");
+       pic.setImage(assetManager, "IntroSplash.jpg", true);
+       pic.setWidth(settings.getWidth());
+       pic.setHeight(settings.getHeight());
+       pic.setPosition(0,0);
+       
+               
+     //initializes key inputs   
+       initKeyMapping();      
+       setDisplayStatView(false);
+       setDisplayFps(false);
+       
+       rootNode.attachChild(pic);      
+    }
+    
+    private void initGame(){
         
+       isGameRunning = true;
+       rootNode.detachAllChildren();
+       guiNode.detachAllChildren();
+       score = 0;
+       blueDestroyed=0;
+       redDestroyed=0;
+       yellowDestroyed=0;
+       cyanDestroyed=0;
+       playerHealth=100;
+       minute = 5;
+       second = 0;
+       
+       
        flyCam.setEnabled(true);
 
        cam.setFrustumFar(2000);
-        
-     //initializes key inputs   
-       initKeyMapping();
         
       //initialzies global physics  
         stateManager.attach(physicsState);
@@ -145,45 +180,63 @@ public class Main extends SimpleApplication {
         createSmokeTrail();
         explosionNode.scale(5f);
         
+        initialTime = System.currentTimeMillis();
     }
 
     @Override
     public void simpleUpdate(float tpf) {
         
-      //sets the movement for the player  
-        camDir.set(cam.getDirection()).multLocal(0.6f);
-        camLeft.set(cam.getLeft()).multLocal(0.4f);
-        walkDirection.set(0, 0, 0);
-        if (left) {
-            walkDirection.addLocal(camLeft);
-        }
-        if (right) {
-            walkDirection.addLocal(camLeft.negate());
-        }
-        if (up) {
-            walkDirection.addLocal(camDir);
-        }
-        if (down) {
-            walkDirection.addLocal(camDir.negate());
-        }
-        character.setWalkDirection(walkDirection);
-        cam.setLocation(character.getPhysicsLocation());
+        if (isGameRunning){
+
+          //sets the movement for the player  
+            camDir.set(cam.getDirection()).multLocal(0.6f);
+            camLeft.set(cam.getLeft()).multLocal(0.4f);
+            walkDirection.set(0, 0, 0);
+            if (left) {
+                walkDirection.addLocal(camLeft);
+            }
+            if (right) {
+                walkDirection.addLocal(camLeft.negate());
+            }
+            if (up) {
+                walkDirection.addLocal(camDir);
+            }
+            if (down) {
+                walkDirection.addLocal(camDir.negate());
+            }
+            character.setWalkDirection(walkDirection);
+            cam.setLocation(character.getPhysicsLocation());
+
+          //sets the audio listener  
+            listener.setLocation(cam.getLocation());
+            listener.setRotation(cam.getRotation());
+            sphereOutofBoundsChecker();
+            collideChecker();
+            if (damageTextOn){
+                damageText.setSize(damageText.getSize() - 0.004f);
+            }
+            if (damageText.getSize() <= 0){
+                damageText.setText(" ");
+            }
+            timeKeeper();
+            if ((minute==0) && (second == 10) && (!timeRemainingSound.getStatus().equals(Status.Playing))){
+                timeRemainingSound.play();
+            }
+        } //end ifGameRunning
         
-      //sets the audio listener  
-        listener.setLocation(cam.getLocation());
-        listener.setRotation(cam.getRotation());
-        
-        if (playerHealth <= 0){
-            endGame();
-        }
-        sphereOutofBoundsChecker();
-        collideChecker();
-        if (damageTextOn){
-            damageText.setSize(damageText.getSize() - 0.004f);
-        }
-        if (damageText.getSize() <= 0){
-            damageText.setText(" ");
-        }
+      //for the score animation.  
+        if (scoreAnim){
+            testable = System.currentTimeMillis();
+            if (testable+0.5 >= System.currentTimeMillis()){
+                scoreAnimation = scoreAnimation+1;
+                scoreAnimationText.setText(Integer.toString(scoreAnimation));
+                testable = System.currentTimeMillis();
+            }
+            if (scoreAnimation >= score){
+                scoreAnim=false;
+                highScorePreparer();
+            }   
+        } //end of the score animation
         
     } //end update loop.
     
@@ -198,9 +251,11 @@ public class Main extends SimpleApplication {
         inputManager.addMapping("Back", new KeyTrigger(KeyInput.KEY_S));
         inputManager.addMapping("Jump", new KeyTrigger(KeyInput.KEY_SPACE));
         inputManager.addMapping("Shoot", new MouseButtonTrigger(MouseInput.BUTTON_LEFT));
+        inputManager.addMapping("Begin", new KeyTrigger(KeyInput.KEY_RETURN));
         inputManager.addListener(actionListener, "Left", "Right");
         inputManager.addListener(actionListener, "Forward", "Back");
         inputManager.addListener(actionListener, "Jump", "Shoot");
+        inputManager.addListener(actionListener, "Begin");
   }
 
     /*
@@ -209,18 +264,27 @@ public class Main extends SimpleApplication {
     private ActionListener actionListener = new ActionListener() {
         
         public void onAction(String binding, boolean value, float tpf) {
-            if (binding.equals("Left")) {
-                left = value;    
-            } else if (binding.equals("Right")) {
-                right = value;
-            } else if (binding.equals("Forward")) {
-                up = value;
-            } else if (binding.equals("Back")) {
-                down = value; 
-            } if (binding.equals("Jump")) {
-                character.jump();
-            } if (binding.equals("Shoot") && !value)
-                shoot();
+            
+            if (isGameRunning){
+                if (binding.equals("Left")) {
+                    left = value;    
+                } else if (binding.equals("Right")) {
+                    right = value;
+                } else if (binding.equals("Forward")) {
+                    up = value;
+                } else if (binding.equals("Back")) {
+                    down = value; 
+                } if (binding.equals("Jump")) {
+                    character.jump();
+                } if (binding.equals("Shoot") && !value)
+                    shoot();
+            }
+            else {
+                if (binding.equals("Shoot")) {} //No need to shoot while in beginning or end state
+                if (binding.equals("Begin")) { 
+                    initGame();
+                }
+            }
         } //end onAction        
     }; //end actionListener
     
@@ -253,8 +317,24 @@ public class Main extends SimpleApplication {
         scoreHUD.setSize(guiFont.getCharSet().getRenderedSize());
         scoreHUD.setColor(ColorRGBA.White);
         scoreHUD.setText(Integer.toString(score));
-        scoreHUD.setLocalTranslation(15, settings.getHeight()-scoreAnnouncerHUD.getHeight()-3, 0);
+        scoreHUD.setLocalTranslation(10, settings.getHeight()-scoreAnnouncerHUD.getHeight()-3, 0);
         guiNode.attachChild(scoreHUD);
+        
+        if (!(highScoreList.isEmpty())){
+            BitmapText highScoreAnnouncerHUD = new BitmapText(guiFont);
+            highScoreAnnouncerHUD.setSize(guiFont.getCharSet().getRenderedSize());
+            highScoreAnnouncerHUD.setColor(ColorRGBA.Green);                        
+            highScoreAnnouncerHUD.setText("HIGH SCORE:");          
+            highScoreAnnouncerHUD.setLocalTranslation(10, settings.getHeight()-60, 0);
+            guiNode.attachChild(highScoreAnnouncerHUD);
+
+            BitmapText highScore = new BitmapText(guiFont);
+            highScore.setSize(guiFont.getCharSet().getRenderedSize());
+            highScore.setColor(ColorRGBA.White);
+            highScore.setText(Integer.toString(highScoreList.get(0).getScore()));          
+            highScore.setLocalTranslation(10, settings.getHeight()-80, 0);
+            guiNode.attachChild(highScore);
+        }
         
                 
       //initiates total for each ball 
@@ -335,8 +415,6 @@ public class Main extends SimpleApplication {
                 (timeAnnouncerHUD.getLineHeight()) + (timeHUD.getLineHeight()) + 2 , 0);
         guiNode.attachChild(timeAnnouncerHUD);
         
-
-        
         BitmapText healthAnnouncerHUD = new BitmapText(guiFont);
         healthAnnouncerHUD.setSize(guiFont.getCharSet().getRenderedSize()+5);
         healthAnnouncerHUD.setColor(ColorRGBA.White);
@@ -388,8 +466,7 @@ public class Main extends SimpleApplication {
         
         cyanSphereGeom.setMaterial(cyanEnemyMat);
         cyanSphereNode.setName("Cyan");
-        
-        
+
     }
     
     /*
@@ -752,6 +829,7 @@ public class Main extends SimpleApplication {
         }
         if ((playerHealth <= 0)) {
             endReason = "You died.";
+            endGame();
         }
         
     
@@ -781,25 +859,35 @@ public class Main extends SimpleApplication {
         healthSound.setPositional(false);
         rootNode.attachChild(healthSound);
         
-        
         punchSound = new AudioNode(assetManager, "Sounds/punch.wav");
         punchSound.setPositional(false);
         rootNode.attachChild(punchSound);
         
+        winSound = new AudioNode(assetManager, "Sounds/winner.wav");
+        winSound.setPositional(false);
+        rootNode.attachChild(winSound);
+        
+        timeRemainingSound = new AudioNode(assetManager, "Sounds/10seconds.wav");
+        timeRemainingSound.setPositional(false);
+        rootNode.attachChild(timeRemainingSound);
+        
         
     } //end initSound
     
-    private void endGame(){
-        
+    /*
+     * All of the end game logic happens in this method.
+     */
+    private void endGame () {
+               
+        isGameRunning = false;
         rootNode.detachAllChildren();
         guiNode.detachAllChildren();
         flyCam.setEnabled(false);
         
-        
       //displays Game Over text and reason that the game is over
       //eg. "You died." (player ran out of health) or "No time remaining" (5 minutes has passed)
         BitmapText gameOverText = new BitmapText(guiFont);
-        gameOverText.setSize(guiFont.getCharSet().getRenderedSize()+10);
+        gameOverText.setSize(guiFont.getCharSet().getRenderedSize()+15);
         gameOverText.setColor(ColorRGBA.Green);                        
         gameOverText.setText("GAME OVER");          
         gameOverText.setLocalTranslation(((settings.getWidth()/2)-(gameOverText.getLineWidth()/2)),
@@ -812,11 +900,131 @@ public class Main extends SimpleApplication {
         reasonText.setText(endReason);
         reasonText.setLocalTranslation(((settings.getWidth()/2)-(reasonText.getLineWidth()/2)), 
                 (settings.getHeight() - (gameOverText.getLineHeight()) - 25), 0);
-        guiNode.attachChild(reasonText);      
-
-        rootNode.attachChild(guiNode);
+        guiNode.attachChild(reasonText);
         
-    }
+        BitmapText scoreAnnouncerText = new BitmapText(guiFont);
+        scoreAnnouncerText.setSize(guiFont.getCharSet().getRenderedSize()+10);
+        scoreAnnouncerText.setColor(ColorRGBA.Green);
+        scoreAnnouncerText.setText("SCORE:");
+        scoreAnnouncerText.setLocalTranslation(((settings.getWidth()/2)-(scoreAnnouncerText.getLineWidth()/2)),
+                settings.getHeight() - 200, 0);
+        guiNode.attachChild(scoreAnnouncerText);
+        
+        scoreAnimationText = new BitmapText(guiFont);
+        scoreAnimationText.setSize(guiFont.getCharSet().getRenderedSize()+10);
+        scoreAnimationText.setColor(ColorRGBA.White);
+        scoreAnimationText.setLocalTranslation(((settings.getWidth()/2)- 30),
+                settings.getHeight() - 230, 0);
+        guiNode.attachChild(scoreAnimationText);
+        
+      //animates displaying of player's score.  
+        scoreAnim = true;
+
+        rootNode.attachChild(guiNode);       
+        
+    } // end endGame()
+    /*
+     * highScorePreparer() gets all the information necessary to prepare, take input,
+     * and display the high scores.
+     */
+    private void highScorePreparer() {
+        
+        
+        int rank = checkHighScore();
+        String name;
+        switch (rank){
+            case 0:
+                name = JOptionPane.showInputDialog("Congratulations! You scored first place!", "Enter name");
+                winSound.play();
+                highScoreList.add(rank, new HighScoreKeeper(name,score));
+                break;
+            case 1:
+                name = JOptionPane.showInputDialog("Second place, nice work!", "Enter name");
+                winSound.play();
+                highScoreList.add(rank, new HighScoreKeeper(name,score));
+                break;
+            case 2:
+                name = JOptionPane.showInputDialog("Third place, not too bad!", "Enter name");
+                winSound.play();
+                highScoreList.add(rank, new HighScoreKeeper(name,score));
+                break;
+            case 3:
+                name= JOptionPane.showInputDialog("Fourth place, that will have to do.", "Enter name");
+                winSound.play();
+                highScoreList.add(rank, new HighScoreKeeper(name,score));
+                break;
+            case 4:
+                name = JOptionPane.showInputDialog("Fifth place, it's better than nothing...", "Enter name");
+                winSound.play();
+                highScoreList.add(rank, new HighScoreKeeper(name,score));
+                break;
+            case -1:
+                if (highScoreList.isEmpty()){
+                    name = JOptionPane.showInputDialog("First time playing? Everyone starts somewhere!", "Enter name");
+                    highScoreList.add(0, new HighScoreKeeper(name,score));
+                    break;
+                }
+                else
+                    break;
+        } //end switch case.
+        
+        highScoreList.recordToFile();
+        
+        BitmapText highScoreAnnouncer = new BitmapText(guiFont);
+        highScoreAnnouncer.setColor(ColorRGBA.Green);
+        highScoreAnnouncer.setSize(guiFont.getCharSet().getRenderedSize()+15);
+        highScoreAnnouncer.setText("HIGH SCORES");
+        highScoreAnnouncer.setLocalTranslation(((settings.getWidth()/2)-(highScoreAnnouncer.getLineWidth()/2)),
+                settings.getHeight()-300, 0);
+        guiNode.attachChild(highScoreAnnouncer);
+        
+        ArrayList<BitmapText> highScoreEntryList = new ArrayList();
+        Node highScoreNode = new Node();
+        int y = 0;
+        for (int i = 0; i < highScoreList.size() && i < 5; i++){
+            BitmapText highScoreEntry = new BitmapText (guiFont);
+            highScoreEntry.setText((i+1)+". " + highScoreList.get(i).getName() + " " + highScoreList.get(i).getScore());
+            highScoreEntry.setLocalTranslation(0,y,0);    
+            if (rank == i){
+                highScoreEntry.setColor(ColorRGBA.Green);
+                highScoreEntry.setSize(guiFont.getCharSet().getRenderedSize()+5);
+            }
+            else {
+                highScoreEntry.setColor(ColorRGBA.White);
+                highScoreEntry.setSize(guiFont.getCharSet().getRenderedSize());
+            }            
+            highScoreEntryList.add(highScoreEntry);
+            y = y - 30;
+        } //end for
+        for (int i = 0; i < highScoreEntryList.size(); i++) {
+            highScoreNode.attachChild(highScoreEntryList.get(i));
+        }
+        highScoreNode.setLocalTranslation(highScoreAnnouncer.getLocalTranslation().x,highScoreAnnouncer.getLocalTranslation().y-40,0);
+        guiNode.attachChild(highScoreNode);
+        
+        BitmapText escapeText = new BitmapText(guiFont);
+        escapeText.setColor(ColorRGBA.Green);
+        escapeText.setText("Press 'ESC' to Exit.");
+        escapeText.setSize(guiFont.getCharSet().getRenderedSize()+10);
+        escapeText.setLocalTranslation(settings.getWidth()/2  - escapeText.getLineWidth()/2,
+                100, 0);
+        guiNode.attachChild(escapeText);
+        
+    }//end highscorepreparer()
+    
+    /*
+     * Determines if the user has a new high score and if it does, replaces
+     * the old high score.
+     */
+    private int checkHighScore() {
+        
+        for (int i = 0; i < highScoreList.size(); i++){
+            if (score >= highScoreList.get(i).getScore()){
+                return i;
+            }
+        }
+        return -1;
+    } //end checkHighScore
     
     /*
      * Called from simpleUpdate, this method keeps
@@ -824,7 +1032,27 @@ public class Main extends SimpleApplication {
      */
     private void timeKeeper() {
         
+        long currentTime = System.currentTimeMillis() - initialTime;
         
+        if (currentTime >= 1000){
+            second = second -1;
+            initialTime = System.currentTimeMillis();
+        }
+        if (second == 0 && !(minute == 0)){
+            minute = minute - 1;
+            second = 59;
+        }
+        if (second < 10){
+            timeHUD.setText(minute + ": 0"+second);
+        }
+        else {
+            timeHUD.setText(minute + ": " + second);
+        }
+        if ((minute == 0) && (second == 0)){
+            endReason = "Ran out of time.";
+            endGame();
+        }
+                
     }
     
     private void blueShootCollision() {
@@ -855,8 +1083,6 @@ public class Main extends SimpleApplication {
         scoreHUD.setText(Integer.toString(score));
         blueDestroyed++;
         blueHUD.setText(Integer.toString(blueDestroyed));
-        hitCount++;
-        System.out.println("hit" + hitCount);
 
         blueCollide=false;
         
@@ -893,8 +1119,6 @@ public class Main extends SimpleApplication {
         scoreHUD.setText(Integer.toString(score));
         redDestroyed++;
         redHUD.setText(Integer.toString(redDestroyed));
-        hitCount++;
-        System.out.println("hit" + hitCount);
 
         redCollide=false;
         
@@ -929,8 +1153,6 @@ public class Main extends SimpleApplication {
         scoreHUD.setText(Integer.toString(score));
         yellowDestroyed++;
         yellowHUD.setText(Integer.toString(yellowDestroyed));
-        hitCount++;
-        System.out.println("hit" + hitCount);
 
         yellowCollide=false;
       //spawns a new sphere
@@ -966,8 +1188,6 @@ public class Main extends SimpleApplication {
         scoreHUD.setText(Integer.toString(score));
         cyanDestroyed++;
         cyanHUD.setText(Integer.toString(cyanDestroyed));
-        hitCount++;
-        System.out.println("hit" + hitCount);
 
       //spawns a new sphere
         cyanCollide = false;
