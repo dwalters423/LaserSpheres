@@ -5,7 +5,7 @@ floating metallic island in space.
 
 The premise of the game is simple: shoot the spheres to earn points, but don't get hit by the spheres or you will lose health!
 
-Try it yourself! Download [here!](https://www.dropbox.com/s/qgctyatparit6t2/LaserSpheres-Windows.zip?dl=0)
+Try it yourself! Download [here!](https://www.dropbox.com/s/qgctyatparit6t2/LaserSpheres-Windows.zip?dl=0) (Requires Java runtime)
 
 ![alt tag](http://i.imgur.com/MLCNfZr.png)
 
