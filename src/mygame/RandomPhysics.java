@@ -1,7 +1,6 @@
 
 /*
  * Author: Dave Walters
- * CMSC 325
  * RandomPhysics.java
  * This class generates some random variables for use with JME3. Can
  * be expanded upon later to contribute to the open source community.
